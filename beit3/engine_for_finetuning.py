@@ -102,6 +102,36 @@ class ImageNetHandler(TaskHandler):
         return {k: meter.global_avg for k, meter in self.metric_logger.meters.items()}, "acc1"
 
 
+class CUBHandler(TaskHandler):
+    def __init__(self, args) -> None:
+        super().__init__()
+        self.criterion = torch.nn.BCE()
+  
+    def train_batch(self, model, image, label, language_tokens, padding_mask):
+        logits = model(
+            image=image,
+            language_tokens=language_tokens,
+            padding_mask=padding_mask)
+        return {
+            "loss": self.criterion(logits, label), 
+        }
+
+    def eval_batch(self, model, image, label, language_tokens, padding_mask):
+        logits = model(
+            image=image,
+            language_tokens=language_tokens,
+            padding_mask=padding_mask)
+        batch_size = image.shape[0]
+        acc1, acc5 = accuracy(logits, label, topk=(1, 5))
+        self.metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
+        self.metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+    
+    def after_eval(self, **kwargs):
+        print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f}'
+            .format(top1=self.metric_logger.acc1, top5=self.metric_logger.acc5))
+        return {k: meter.global_avg for k, meter in self.metric_logger.meters.items()}, "acc1"
+
+
 class RetrievalHandler(TaskHandler):
     def __init__(self) -> None:
         super().__init__()
@@ -447,6 +477,8 @@ def get_handler(args):
         return CaptioningHandler(args)
     elif args.task in ("imagenet"):
         return ImageNetHandler(args)
+    elif args.task in ("cub"):
+        return CUBHandler(args)
     else:
         raise NotImplementedError("Sorry, %s is not support." % args.task)
 

@@ -129,6 +129,32 @@ class BEiT3ForImageClassification(BEiT3Wrapper):
         cls_x = self.fc_norm(t.mean(1))
         return self.head(cls_x)
 
+class BEiT3ForBinaryClassification(BEiT3Wrapper):
+    def __init__(
+            self, 
+            args, 
+            num_classes=1, 
+            norm_layer=nn.LayerNorm, 
+            **kwargs
+    ):
+        super(BEiT3ForImageClassification, self).__init__(args=args)
+        embed_dim = args.encoder_embed_dim
+        self.fc_norm = norm_layer(embed_dim)
+        self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+
+        self.fc_norm.apply(self._init_weights)
+        self.head.apply(self._init_weights)
+        init_scale = 0.001
+        if isinstance(self.head, nn.Linear):
+            self.head.weight.data.mul_(init_scale)
+            self.head.bias.data.mul_(init_scale)
+
+    def forward(self, image, **kwargs):
+        x = self.beit3(textual_tokens=None, visual_tokens=image)["encoder_out"]
+        t = x[:, 1:, :]
+        cls_x = self.fc_norm(t.mean(1))
+        return F.sigmoid(self.head(cls_x))
+
 
 class BEiT3ForCaptioning(BEiT3Wrapper):
     def __init__(
